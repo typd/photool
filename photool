@@ -1,0 +1,130 @@
+#!/usr/bin/env python3
+
+import sys
+import os
+import PIL.ExifTags
+import PIL.Image
+from PIL import Image
+import json
+import time
+
+def fetch(att, dict):
+    if not att in dict:
+        return None
+    if dict[att] == None or dict[att] == "":
+        return None
+    return dict[att]
+
+def pick_in_list(index, arr):
+    if (not isinstance(arr, list)) and (not isinstance(arr, tuple)):
+        return arr
+    if len(arr) > 0:
+        return arr[index]
+    return None
+
+def load_info(img):
+    exif = {}
+    for k, v in img._getexif().items():
+        if (k in PIL.ExifTags.TAGS) and (not isinstance(v, bytes)):
+            kk = PIL.ExifTags.TAGS[k]
+            exif[kk] = v
+    # print(json.dumps(exif, indent = 4))
+
+    info = {}
+    # ref https://www.awaresystems.be/imaging/tiff/tifftags/privateifd/exif.html
+    # time
+    temp = fetch("DateTimeOriginal", exif)
+    ct = time.strptime(temp, "%Y:%m:%d %H:%M:%S")
+    # focal, a list
+    temp = fetch("FocalLength", exif)
+    focal = pick_in_list(0, temp)
+    # focal in 35mm
+    focal_in35mm = fetch("FocalLengthIn35mmFilm", exif)
+    # make
+    make = fetch("Make", exif)
+    # Model
+    model = fetch("Model", exif)
+    # ExposureTime
+    temp = fetch("ExposureTime", exif)
+    exp_time = "{}/{}".format(temp[0], temp[1]) if temp else None
+    # f number
+    temp = fetch("FNumber", exif)
+    temp = float(temp[0]) / temp[1]
+    fnumber = "{0:.1f}".format(temp)
+    # WhiteBalance
+    """
+    Indicates the white balance mode set when the image was shot.
+    0 = Auto white balance
+    1 = Manual white balance
+    """
+    temp = fetch("WhiteBalance", exif)
+    # exposure bias
+    """
+    The exposure bias.
+    The unit is the APEX (Additive System of Photographic Exposure) setting.
+    Ordinarily it is given in the range of -99.99 to 99.99.
+    """
+    temp = fetch("ExposureBiasValue", exif)
+    if temp[0] == 0:
+        ev = ""
+    else:
+        temp = float(temp[0]) / temp[1]
+        ev = ", {0:.1f}ev".format(temp)
+    # exp program
+    """
+    The class of the program used by the camera to set exposure when the picture is taken.
+    0 = Not defined
+    1 = Manual
+    2 = Normal program
+    3 = Aperture priority
+    4 = Shutter priority
+    5 = Creative program (biased toward depth of field)
+    6 = Action program (biased toward fast shutter speed)
+    7 = Portrait mode (for closeup photos with the background out of focus)
+    8 = Landscape mode (for landscape photos with the background in focus)
+    """
+    exp_program = fetch("ExposureProgram", exif)
+    # ISO
+    iso = fetch("ISOSpeedRatings", exif)
+    # GainControl ?
+    """
+    Indicates the degree of overall image gain adjustment.
+    0 = None
+    1 = Low gain up
+    2 = High gain up
+    3 = Low gain down
+    4 = High gain down
+    """
+    gain = fetch("GainControl", exif)
+    # summary
+    info = "{}mm ({}mm in 35mm), f{}, {}s, ISO {}{}, by {} @ {}".format(focal, focal_in35mm,
+            fnumber, exp_time, iso, ev, model, time.strftime("%Y/%m/%d %H:%M", ct))
+    return info
+
+def transform(path):
+    # load info
+    img = PIL.Image.open(path)
+    info = load_info(img)
+    print(info)
+    # transform
+    w, h = img.size
+    ratio = float(w) / h
+    print("{}px, {}px, ".format(w, h) + "{0:.3f}".format(ratio))
+    exp_ratio = 4.0 / 3.0
+    d_w = int(exp_ratio * h - w)
+    if d_w < 0.0:
+        d_w = 0
+    d_h = int(float(w) / exp_ratio - h)
+    if d_h < 0.0:
+        d_h = 0 
+    final = Image.new(mode = 'RGB', size = (w + d_w, h + d_h), color = (0, 0, 0))
+    final.paste(img, (0, 0))
+    final.show()
+    final.save("out.jpg", "JPEG", quality=100, optimize=True, progressive=True)
+
+def main():
+    path = "/Users/y/Downloads/d1.jpg"
+    transform(path)
+
+if __name__ == "__main__":
+    main()
