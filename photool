@@ -4,7 +4,7 @@ import sys
 import os
 import PIL.ExifTags
 import PIL.Image
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 import json
 import time
 
@@ -24,6 +24,8 @@ def pick_in_list(index, arr):
 
 def load_info(img):
     exif = {}
+    if img._getexif() == None:
+        return None
     for k, v in img._getexif().items():
         if (k in PIL.ExifTags.TAGS) and (not isinstance(v, bytes)):
             kk = PIL.ExifTags.TAGS[k]
@@ -97,7 +99,7 @@ def load_info(img):
     """
     gain = fetch("GainControl", exif)
     # summary
-    info = "{}mm ({}mm in 35mm), f{}, {}s, ISO {}{}, by {} @ {}".format(focal, focal_in35mm,
+    info = "{}mm ({}mm in 35mm), f{}, {}s, ISO {}{}, {}, {}".format(focal, focal_in35mm,
             fnumber, exp_time, iso, ev, model, time.strftime("%Y/%m/%d %H:%M", ct))
     return info
 
@@ -117,13 +119,36 @@ def transform(path):
     d_h = int(float(w) / exp_ratio - h)
     if d_h < 0.0:
         d_h = 0 
+    start_h = 0
+    if d_h > 100:
+        start_h = int(d_h / 2)
+    start_w = 0
+    if d_w > 100:
+        start_w = int(d_w / 2)
     final = Image.new(mode = 'RGB', size = (w + d_w, h + d_h), color = (0, 0, 0))
-    final.paste(img, (0, 0))
+    final.paste(img, (start_w, start_h))
+
+    # print info
+    if info:
+        fnt = ImageFont.truetype('./fonts/Arial.ttf', 80)
+        margin = 20
+        # if bottom
+        txt_box = (w, d_h - start_h)
+        txt_img = Image.new('RGB', txt_box, (0, 0, 0))
+        txt_d = ImageDraw.Draw(txt_img)
+        txt_w, txt_h = txt_d.textsize(info, font=fnt)
+        txt_d.text((w - txt_w - margin, margin), info, font=fnt, fill=(200, 200, 200))
+        final.paste(txt_img, (start_w, start_h + h))
+        # if right
+        # TODO
+        # endif
+        #txt_img.show()
+
     final.show()
     final.save("out.jpg", "JPEG", quality=100, optimize=True, progressive=True)
 
 def main():
-    path = "/Users/y/Downloads/d1.jpg"
+    path = "tests/d3.png"
     transform(path)
 
 if __name__ == "__main__":
