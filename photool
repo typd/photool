@@ -22,6 +22,17 @@ def pick_in_list(index, arr):
         return arr[index]
     return None
 
+def pick_ratio(k):
+    # 5"      : 127mm * 89mm
+    # 5" extra: 127mm * 95mm
+    # 6"      : 152mm * 102mm
+    return {
+            "5": 127.0 / 89,
+            "5e": 127.0 / 95,
+            "6": 152.0 / 102,
+            "x": 182.0 / 102
+            }[k]
+
 def load_info(img):
     exif = {}
     if img._getexif() == None:
@@ -103,53 +114,71 @@ def load_info(img):
             fnumber, exp_time, iso, ev, model, time.strftime("%Y/%m/%d %H:%M", ct))
     return info
 
-def transform(path):
-    # load info
+def transform(path, exp_ratio):
+    print("processing {}".format(path))
     img = PIL.Image.open(path)
+
+    # load info
     info = load_info(img)
-    print(info)
-    # transform
+    print("    info: {}".format(info))
+
+    # re-size
     w, h = img.size
     ratio = float(w) / h
-    print("{}px, {}px, ".format(w, h) + "{0:.3f}".format(ratio))
-    exp_ratio = 4.0 / 3.0
-    d_w = int(exp_ratio * h - w)
-    if d_w < 0.0:
-        d_w = 0
-    d_h = int(float(w) / exp_ratio - h)
-    if d_h < 0.0:
-        d_h = 0 
+    if ratio < 1.0:
+        exp_ratio = 1.0 / exp_ratio
+    d_w = max(int(exp_ratio * h - w), 0)
+    d_h = max(int(float(w) / exp_ratio - h), 0)
+    print("    size: w{}px, h{}px, ".format(w, h) + "{0:.3f}".format(ratio))
+    print("  resize: w{}px, h{}px, ".format(w + d_w, h + d_h) + "{0:.3f}".format(exp_ratio))
+    # if too much margin, place image to the center
+    # otherwise, place it to one side
     start_h = 0
     if d_h > 100:
         start_h = int(d_h / 2)
     start_w = 0
     if d_w > 100:
         start_w = int(d_w / 2)
+
+    info_on_bottom, info_on_right = False, False
+    # need large enough margin 
+    if info:
+        if d_w > 100:
+            info_on_right = True
+        if d_h > 100:
+            info_on_bottom = True
+
+    # new image
     final = Image.new(mode = 'RGB', size = (w + d_w, h + d_h), color = (0, 0, 0))
     final.paste(img, (start_w, start_h))
 
-    # print info
-    if info:
+    # attach info
+    if info_on_bottom or info_on_right:
         fnt = ImageFont.truetype('./fonts/Arial.ttf', 80)
         margin = 20
-        # if bottom
-        txt_box = (w, d_h - start_h)
-        txt_img = Image.new('RGB', txt_box, (0, 0, 0))
+        if info_on_bottom:
+            txt_w, txt_h = (w, d_h - start_h)
+        if info_on_right:
+            txt_w, txt_h = (h, d_w - start_w)
+        txt_img = Image.new('RGB', (txt_w, txt_h), (0, 0, 0))
         txt_d = ImageDraw.Draw(txt_img)
-        txt_w, txt_h = txt_d.textsize(info, font=fnt)
-        txt_d.text((w - txt_w - margin, margin), info, font=fnt, fill=(200, 200, 200))
-        final.paste(txt_img, (start_w, start_h + h))
-        # if right
-        # TODO
-        # endif
-        #txt_img.show()
+        font_w, font_h = txt_d.textsize(info, font=fnt)
+        txt_d.text((txt_w - font_w - margin, margin), info, font=fnt, fill=(200, 200, 200))
+        if info_on_bottom:
+            final.paste(txt_img, (start_w, start_h + h))
+        if info_on_right:
+            txt_img = txt_img.rotate(90, expand=1)
+            final.paste(txt_img, (start_w + w, start_h))
 
-    final.show()
-    final.save("out.jpg", "JPEG", quality=100, optimize=True, progressive=True)
+    return final
 
 def main():
-    path = "tests/d3.png"
-    transform(path)
+    path = "tests/d1.jpg"
+    size = "5e"
+    ratio = pick_ratio(size)
+    img = transform(path, ratio)
+    img.show()
+    img.save("out.jpg", "JPEG", quality=100, optimize=True, progressive=True)
 
 if __name__ == "__main__":
     main()
