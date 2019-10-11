@@ -2,11 +2,13 @@
 
 import sys
 import os
+import json
+import time
+
 import PIL.ExifTags
 import PIL.Image
 from PIL import Image, ImageDraw, ImageFont
-import json
-import time
+import argparse
 
 def fetch(att, dict):
     if not att in dict:
@@ -41,7 +43,7 @@ def load_info(img):
         if (k in PIL.ExifTags.TAGS) and (not isinstance(v, bytes)):
             kk = PIL.ExifTags.TAGS[k]
             exif[kk] = v
-    # print(json.dumps(exif, indent = 4))
+    #print(json.dumps(exif, indent = 4))
 
     info = {}
     # ref https://www.awaresystems.be/imaging/tiff/tifftags/privateifd/exif.html
@@ -50,7 +52,7 @@ def load_info(img):
     ct = time.strptime(temp, "%Y:%m:%d %H:%M:%S")
     # focal, a list
     temp = fetch("FocalLength", exif)
-    focal = pick_in_list(0, temp)
+    focal = float(temp[0]) / temp[1]
     # focal in 35mm
     focal_in35mm = fetch("FocalLengthIn35mmFilm", exif)
     # make
@@ -59,7 +61,7 @@ def load_info(img):
     model = fetch("Model", exif)
     # ExposureTime
     temp = fetch("ExposureTime", exif)
-    exp_time = "{}/{}".format(temp[0], temp[1]) if temp else None
+    exp_time = "1/{}".format(int(temp[1] / temp[0])) if temp else None
     # f number
     temp = fetch("FNumber", exif)
     temp = float(temp[0]) / temp[1]
@@ -125,35 +127,46 @@ def transform(path, exp_ratio):
     # re-size
     w, h = img.size
     ratio = float(w) / h
+    print("    size: w{}px, h{}px, ".format(w, h) + "{0:.3f}".format(ratio))
+    # expectation
     if ratio < 1.0:
         exp_ratio = 1.0 / exp_ratio
+
     d_w = max(int(exp_ratio * h - w), 0)
     d_h = max(int(float(w) / exp_ratio - h), 0)
-    print("    size: w{}px, h{}px, ".format(w, h) + "{0:.3f}".format(ratio))
+
+    attach_info = (info != None)
+    info_on_bottom, info_on_right = False, False
+    min_extra = 120
+    if attach_info:
+        info_on_right = (d_w > 0)
+        info_on_bottom = (d_h > 0)
+        # if perfect ratio, force to print on bottom
+        if (not info_on_right) and (not info_on_bottom):
+            info_on_bottom = True
+        if info_on_right and d_w < min_extra:
+            d_w = min_extra
+            d_h = int(float(d_w + w) / exp_ratio - h)
+        if info_on_bottom and d_h < min_extra:
+            d_h = min_extra
+            d_w = int(float(d_h + h) * exp_ratio - w)
+
     print("  resize: w{}px, h{}px, ".format(w + d_w, h + d_h) + "{0:.3f}".format(exp_ratio))
     # if too much margin, place image to the center
     # otherwise, place it to one side
     start_h = 0
-    if d_h > 100:
+    if d_h / 2 > min_extra:
         start_h = int(d_h / 2)
     start_w = 0
-    if d_w > 100:
+    if d_w / 2 > min_extra:
         start_w = int(d_w / 2)
-
-    info_on_bottom, info_on_right = False, False
-    # need large enough margin 
-    if info:
-        if d_w > 100:
-            info_on_right = True
-        if d_h > 100:
-            info_on_bottom = True
 
     # new image
     final = Image.new(mode = 'RGB', size = (w + d_w, h + d_h), color = (0, 0, 0))
     final.paste(img, (start_w, start_h))
 
     # attach info
-    if info_on_bottom or info_on_right:
+    if attach_info:
         fnt = ImageFont.truetype('./fonts/Arial.ttf', 80)
         margin = 20
         if info_on_bottom:
@@ -170,15 +183,34 @@ def transform(path, exp_ratio):
             txt_img = txt_img.rotate(90, expand=1)
             final.paste(txt_img, (start_w + w, start_h))
 
-    return final
+    return final, attach_info
 
-def main():
-    path = "tests/d1.jpg"
-    size = "5e"
+def is_image(file):
+    str = file.lower()
+    return str.endswith(".png") or str.endswith(".jpg")
+
+def process(input_dir, output_dir, size):
     ratio = pick_ratio(size)
-    img = transform(path, ratio)
-    img.show()
-    img.save("out.jpg", "JPEG", quality=100, optimize=True, progressive=True)
+    for file in os.listdir(input_dir):
+        if not is_image(file):
+            continue
+        path = os.path.join(input_dir, file)
+        img, attach_info = transform(path, ratio)
+        #img.show()
+        prefix = "info-" if attach_info else "noinfo-"
+        outpath = os.path.join(output_dir, prefix + file)
+        img.save(outpath, "JPEG", quality=100, optimize=True, progressive=True)
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-i', dest='input_dir', help='input directory', required=True)
+    #parser.add_argument('-o', dest='output_dir', help='output directory', required=True)
+    parser.add_argument('-s', dest='size', help='photo size: "5", "5e", "6"', default="5e")
+    args = parser.parse_args()
+
+    output_dir = args.input_dir + "-output"
+    if not os.path.exists(output_dir):
+        os.mkdir(output_dir)
+    process(args.input_dir, output_dir, args.size)
+
+
