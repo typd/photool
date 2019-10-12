@@ -10,6 +10,9 @@ import PIL.Image
 from PIL import Image, ImageDraw, ImageFont
 import argparse
 
+def green(text):
+    return "\033[92m" + text + "\033[0m"
+
 def fetch(att, dict):
     if not att in dict:
         return None
@@ -35,7 +38,7 @@ def pick_ratio(k):
             "x": 182.0 / 102
             }[k]
 
-def load_info(img):
+def load_info(img, verbose):
     exif = {}
     if img._getexif() == None:
         return None
@@ -43,9 +46,16 @@ def load_info(img):
         if (k in PIL.ExifTags.TAGS) and (not isinstance(v, bytes)):
             kk = PIL.ExifTags.TAGS[k]
             exif[kk] = v
-    #print(json.dumps(exif, indent = 4))
+    if verbose:
+        print(json.dumps(exif, indent = 4))
 
     info = {}
+    # orientation
+    ori = fetch("Orientation", exif)
+    if ori == 8:
+        if verbose:
+            print("    rotate img 90'")
+        img = img.rotate(90, expand=1)
     # ref https://www.awaresystems.be/imaging/tiff/tifftags/privateifd/exif.html
     # time
     temp = fetch("DateTimeOriginal", exif)
@@ -61,11 +71,18 @@ def load_info(img):
     model = fetch("Model", exif)
     # ExposureTime
     temp = fetch("ExposureTime", exif)
-    exp_time = "1/{}".format(int(temp[1] / temp[0])) if temp else None
+    value = float(temp[0]) / temp[1]
+    if value > 0.4:
+        exp_time = "{}".format(value)
+    else:
+        exp_time = "1/{}".format(int(1.0 / value))
     # f number
     temp = fetch("FNumber", exif)
     temp = float(temp[0]) / temp[1]
-    fnumber = "{0:.1f}".format(temp)
+    if temp > 8:
+        fnumber = int(temp)
+    else:
+        fnumber = "{0:.1f}".format(temp)
     # WhiteBalance
     """
     Indicates the white balance mode set when the image was shot.
@@ -114,13 +131,13 @@ def load_info(img):
     # summary
     info = "{}mm ({}mm in 35mm), F{}, {}s, ISO {}{}, {}, {}".format(focal, focal_in35mm,
             fnumber, exp_time, iso, ev, model, time.strftime("%Y/%m/%d %H:%M", ct))
-    return info
+    return info, img
 
-def transform(path, exp_ratio):
+def transform(path, exp_ratio, verbose):
     img = PIL.Image.open(path)
 
     # load info
-    info = load_info(img)
+    info, img = load_info(img, verbose)
     print("    info: {}".format(info))
 
     # re-size
@@ -210,18 +227,20 @@ def output_prefix(attach_info, info_on_bottom, info_on_right, d_w, d_h):
         p += "-"
     return p
 
-def process_folder(input_dir, output_dir, size):
+def process_folder(input_dir, output_dir, size, verbose):
+    count = 0
     for file in os.listdir(input_dir):
         path = os.path.join(input_dir, file)
-        process_img(path, output_dir, size)
+        count += process_img(path, output_dir, size, verbose)
+    print(green("Proccessed {} images".format(count)))
 
-def process_img(path, output_dir, size):
+def process_img(path, output_dir, size, verbose):
     if not is_image(path):
         print("ignore {}".format(path))
-        return
+        return 0
     ratio = pick_ratio(size)
     print("processing {}".format(path))
-    img, attach_info, info_on_bottom, info_on_right, d_w, d_h = transform(path, ratio)
+    img, attach_info, info_on_bottom, info_on_right, d_w, d_h = transform(path, ratio, verbose)
     #img.show()
     prefix = output_prefix(attach_info, info_on_bottom, info_on_right, d_w, d_h)
     outpath = os.path.join(output_dir, prefix + os.path.basename(path))
@@ -229,24 +248,23 @@ def process_img(path, output_dir, size):
         os.mkdir(args.output_dir)
     img.save(outpath, "JPEG", quality=100, optimize=True, progressive=True)
     print("   saved: {}".format(outpath))
+    return 1
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-i', dest='input_dir', help='input directory')
-    parser.add_argument('-f', dest='file', help='input file')
+    parser.add_argument('-i', dest='input',  required=True, help='input directory or file')
+    parser.add_argument('-v', dest='verbose', help='verbose', required=False, action='store_true')
     parser.add_argument('-o', dest='output_dir', help='output directory')
     parser.add_argument('-s', dest='size', help='photo size: "5", "5e", "6"', default="5e")
     args = parser.parse_args()
 
-    if args.input_dir:
+    if os.path.isdir(args.input):
         if not args.output_dir:
-            args.output_dir = args.input_dir + "-output"
-        process_folder(args.input_dir, args.output_dir, args.size)
-    elif args.file:
+            args.output_dir = args.input + "-output"
+        process_folder(args.input, args.output_dir, args.size, args.verbose)
+    else:
         if not args.output_dir:
             args.output_dir = os.path.dirname(args.file) + "-output"
-        process_img(args.file, args.output_dir, args.size)
-    else:
-        parser.print_help(sys.stderr)
+        process_img(args.input, args.output_dir, args.size, args.verbose)
 
 
