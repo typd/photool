@@ -129,7 +129,7 @@ def load_info(img, verbose):
     """
     gain = fetch("GainControl", exif)
     # summary
-    info = "{}mm ({}mm in 35mm), F{}, {}s, ISO {}{}, {}, {}".format(focal, focal_in35mm,
+    info = "{}mm ({}mm), F{}, {}s, ISO {}{}, {}, {}".format(focal, focal_in35mm,
             fnumber, exp_time, iso, ev, model, time.strftime("%Y/%m/%d %H:%M", ct))
     return info, img
 
