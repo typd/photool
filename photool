@@ -10,6 +10,9 @@ import PIL.Image
 from PIL import Image, ImageDraw, ImageFont
 import argparse
 
+def yellow(text):
+    return "\033[93m" + text + "\033[0m"
+
 def green(text):
     return "\033[92m" + text + "\033[0m"
 
@@ -101,7 +104,13 @@ def load_info(img, verbose):
         ev = ""
     else:
         temp = float(temp[0]) / temp[1]
-        ev = ", {0:.1f}ev".format(temp)
+        ev = ", "
+        if temp > 0:
+            ev += "+"
+        if temp < 0:
+            ev += "-"
+            temp = abs(temp)
+        ev += "{0:.1f}ev".format(temp)
     # exp program
     """
     The class of the program used by the camera to set exposure when the picture is taken.
@@ -138,7 +147,7 @@ def transform(path, exp_ratio, verbose):
 
     # load info
     info, img = load_info(img, verbose)
-    print("    info: {}".format(info))
+    print(yellow("    info: {}".format(info)))
 
     # re-size
     w, h = img.size
@@ -264,7 +273,7 @@ if __name__ == "__main__":
         process_folder(args.input, args.output_dir, args.size, args.verbose)
     else:
         if not args.output_dir:
-            args.output_dir = os.path.dirname(args.file) + "-output"
+            args.output_dir = os.path.dirname(args.input) + "-output"
         process_img(args.input, args.output_dir, args.size, args.verbose)
 
 
