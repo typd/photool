@@ -52,7 +52,7 @@ def load_info(img):
     ct = time.strptime(temp, "%Y:%m:%d %H:%M:%S")
     # focal, a list
     temp = fetch("FocalLength", exif)
-    focal = float(temp[0]) / temp[1]
+    focal = int(float(temp[0]) / temp[1])
     # focal in 35mm
     focal_in35mm = fetch("FocalLengthIn35mmFilm", exif)
     # make
@@ -112,12 +112,11 @@ def load_info(img):
     """
     gain = fetch("GainControl", exif)
     # summary
-    info = "{}mm ({}mm in 35mm), f{}, {}s, ISO {}{}, {}, {}".format(focal, focal_in35mm,
+    info = "{}mm ({}mm in 35mm), F{}, {}s, ISO {}{}, {}, {}".format(focal, focal_in35mm,
             fnumber, exp_time, iso, ev, model, time.strftime("%Y/%m/%d %H:%M", ct))
     return info
 
 def transform(path, exp_ratio):
-    print("processing {}".format(path))
     img = PIL.Image.open(path)
 
     # load info
@@ -183,34 +182,71 @@ def transform(path, exp_ratio):
             txt_img = txt_img.rotate(90, expand=1)
             final.paste(txt_img, (start_w + w, start_h))
 
-    return final, attach_info
+    return final, attach_info, info_on_bottom, info_on_right, d_w, d_h
 
-def is_image(file):
-    str = file.lower()
+def is_image(path):
+    str = os.path.basename(path).lower()
+    if str.startswith("."):
+        return False 
     return str.endswith(".png") or str.endswith(".jpg")
 
-def process(input_dir, output_dir, size):
-    ratio = pick_ratio(size)
+def output_prefix(attach_info, info_on_bottom, info_on_right, d_w, d_h):
+    p = ""
+    if attach_info:
+        if info_on_bottom:
+            p += "b-"
+        if info_on_right:
+            p += "r-"
+    else:
+        p += "no-"
+    suffix = False
+    if d_w > 0:
+        p += "w" + str(d_w)
+        suffix = True
+    if d_h > 0:
+        p += "h" + str(d_h)
+        suffix = True
+    if suffix:
+        p += "-"
+    return p
+
+def process_folder(input_dir, output_dir, size):
     for file in os.listdir(input_dir):
-        if not is_image(file):
-            continue
         path = os.path.join(input_dir, file)
-        img, attach_info = transform(path, ratio)
-        #img.show()
-        prefix = "info-" if attach_info else "noinfo-"
-        outpath = os.path.join(output_dir, prefix + file)
-        img.save(outpath, "JPEG", quality=100, optimize=True, progressive=True)
+        process_img(path, output_dir, size)
+
+def process_img(path, output_dir, size):
+    if not is_image(path):
+        print("ignore {}".format(path))
+        return
+    ratio = pick_ratio(size)
+    print("processing {}".format(path))
+    img, attach_info, info_on_bottom, info_on_right, d_w, d_h = transform(path, ratio)
+    #img.show()
+    prefix = output_prefix(attach_info, info_on_bottom, info_on_right, d_w, d_h)
+    outpath = os.path.join(output_dir, prefix + os.path.basename(path))
+    if not os.path.exists(args.output_dir):
+        os.mkdir(args.output_dir)
+    img.save(outpath, "JPEG", quality=100, optimize=True, progressive=True)
+    print("   saved: {}".format(outpath))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-i', dest='input_dir', help='input directory', required=True)
-    #parser.add_argument('-o', dest='output_dir', help='output directory', required=True)
+    parser.add_argument('-i', dest='input_dir', help='input directory')
+    parser.add_argument('-f', dest='file', help='input file')
+    parser.add_argument('-o', dest='output_dir', help='output directory')
     parser.add_argument('-s', dest='size', help='photo size: "5", "5e", "6"', default="5e")
     args = parser.parse_args()
 
-    output_dir = args.input_dir + "-output"
-    if not os.path.exists(output_dir):
-        os.mkdir(output_dir)
-    process(args.input_dir, output_dir, args.size)
+    if args.input_dir:
+        if not args.output_dir:
+            args.output_dir = args.input_dir + "-output"
+        process_folder(args.input_dir, args.output_dir, args.size)
+    elif args.file:
+        if not args.output_dir:
+            args.output_dir = os.path.dirname(args.file) + "-output"
+        process_img(args.file, args.output_dir, args.size)
+    else:
+        parser.print_help(sys.stderr)
 
 
