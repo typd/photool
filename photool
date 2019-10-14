@@ -205,7 +205,7 @@ def transform(path, exp_ratio, verbose):
         if info_on_bottom:
             final.paste(txt_img, (start_w, start_h + h))
         if info_on_right:
-            txt_img = txt_img.rotate(90, expand=1)
+            txt_img = txt_img.rotate(270, expand=1)
             final.paste(txt_img, (start_w + w, start_h))
 
     return final, attach_info, info_on_bottom, info_on_right, d_w, d_h
