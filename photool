@@ -4,6 +4,7 @@ import sys
 import os
 import json
 import time
+from datetime import datetime
 
 import PIL.ExifTags
 import PIL.Image
@@ -41,7 +42,7 @@ def pick_ratio(k):
             "x": 182.0 / 102
             }[k]
 
-def load_info(img, verbose):
+def load_info(img, path, verbose):
     exif = {}
     if img._getexif() == None:
         return None
@@ -62,10 +63,18 @@ def load_info(img, verbose):
     # ref https://www.awaresystems.be/imaging/tiff/tifftags/privateifd/exif.html
     # time
     temp = fetch("DateTimeOriginal", exif)
-    ct = time.strptime(temp, "%Y:%m:%d %H:%M:%S")
+    if temp:
+        ct = time.strptime(temp, "%Y:%m:%d %H:%M:%S")
+        ct = time.strftime("%Y/%m/%d %H:%M", ct)
+    else:
+        mtime = os.path.getmtime(path)
+        ct = datetime.utcfromtimestamp(mtime).strftime("%Y/%m/%d %H:%M")
     # focal, a list
     temp = fetch("FocalLength", exif)
-    focal = int(float(temp[0]) / temp[1])
+    if temp:
+        focal = int(float(temp[0]) / temp[1])
+    else:
+        focal = None
     # focal in 35mm
     focal_in35mm = fetch("FocalLengthIn35mmFilm", exif)
     # make
@@ -74,18 +83,24 @@ def load_info(img, verbose):
     model = fetch("Model", exif)
     # ExposureTime
     temp = fetch("ExposureTime", exif)
-    value = float(temp[0]) / temp[1]
-    if value > 0.4:
-        exp_time = "{}".format(value)
+    if temp:
+        value = float(temp[0]) / temp[1]
+        if value > 0.4:
+            exp_time = "{}".format(value)
+        else:
+            exp_time = "1/{}".format(int(1.0 / value))
     else:
-        exp_time = "1/{}".format(int(1.0 / value))
+        exp_time = None
     # f number
     temp = fetch("FNumber", exif)
-    temp = float(temp[0]) / temp[1]
-    if temp > 8:
-        fnumber = int(temp)
+    if temp:
+        temp = float(temp[0]) / temp[1]
+        if temp > 8:
+            fnumber = int(temp)
+        else:
+            fnumber = "{0:.1f}".format(temp)
     else:
-        fnumber = "{0:.1f}".format(temp)
+        fnumber = None
     # WhiteBalance
     """
     Indicates the white balance mode set when the image was shot.
@@ -100,17 +115,20 @@ def load_info(img, verbose):
     Ordinarily it is given in the range of -99.99 to 99.99.
     """
     temp = fetch("ExposureBiasValue", exif)
-    if temp[0] == 0:
-        ev = ""
+    if temp:
+        if temp[0] == 0:
+            ev = ""
+        else:
+            temp = float(temp[0]) / temp[1]
+            ev = ", "
+            if temp > 0:
+                ev += "+"
+            if temp < 0:
+                ev += "-"
+                temp = abs(temp)
+            ev += "{0:.1f}ev".format(temp)
     else:
-        temp = float(temp[0]) / temp[1]
-        ev = ", "
-        if temp > 0:
-            ev += "+"
-        if temp < 0:
-            ev += "-"
-            temp = abs(temp)
-        ev += "{0:.1f}ev".format(temp)
+        ev = None
     # exp program
     """
     The class of the program used by the camera to set exposure when the picture is taken.
@@ -138,15 +156,29 @@ def load_info(img, verbose):
     """
     gain = fetch("GainControl", exif)
     # summary
-    info = "{}mm ({}mm), F{}, {}s, ISO {}{}, {}, {}".format(focal, focal_in35mm,
-            fnumber, exp_time, iso, ev, model, time.strftime("%Y/%m/%d %H:%M", ct))
+    info = ""
+    if focal and focal_in35mm:
+        info += "{}mm ({}mm)".format(focal, focal_in35mm)
+    if fnumber:
+        info += ", F{}".format(fnumber)
+    if exp_time:
+        info += ", {}s".format(exp_time)
+    if iso:
+        info += ", ISO {}{}".format(iso, ev)
+    if model:
+        info += ", {}".format(model)
+    if ct:
+        info += ", {}".format(ct)
+    if info[0] == ",":
+        info = info[1:]
+    info = info.strip()
     return info, img
 
 def transform(path, exp_ratio, verbose):
     img = PIL.Image.open(path)
 
     # load info
-    info, img = load_info(img, verbose)
+    info, img = load_info(img, path, verbose)
     print(yellow("    info: {}".format(info)))
 
     # re-size
@@ -264,7 +296,7 @@ if __name__ == "__main__":
     parser.add_argument('-i', dest='input',  required=True, help='input directory or file')
     parser.add_argument('-v', dest='verbose', help='verbose', required=False, action='store_true')
     parser.add_argument('-o', dest='output_dir', help='output directory')
-    parser.add_argument('-s', dest='size', help='photo size: "5", "5e", "6"', default="5e")
+    parser.add_argument('-s', dest='size', help='photo size: "5", "5e", "6"', default="5")
     args = parser.parse_args()
 
     if os.path.isdir(args.input):
