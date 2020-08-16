@@ -17,6 +17,9 @@ def yellow(text):
 def green(text):
     return "\033[92m" + text + "\033[0m"
 
+def red(text):
+    return "\033[31m" + text + "\033[0m"
+
 def fetch(att, dict):
     if not att in dict:
         return None
@@ -44,7 +47,9 @@ def pick_ratio(k):
 
 def load_info(img, path, verbose):
     exif = {}
-    if img._getexif() == None:
+    if (img == None) or\
+        (img._getexif() == None) or\
+        (img._getexif().items() == None):
         return None
     for k, v in img._getexif().items():
         if (k in PIL.ExifTags.TAGS) and (not isinstance(v, bytes)):
@@ -178,7 +183,11 @@ def transform(path, exp_ratio, verbose):
     img = PIL.Image.open(path)
 
     # load info
-    info, img = load_info(img, path, verbose)
+    try:
+        info, img = load_info(img, path, verbose)
+    except:
+        print(red("Unexpected error:{}".format(sys.exc_info()[0])))
+        info = os.path.basename(path)
     print(yellow("    info: {}".format(info)))
 
     # re-size
@@ -246,7 +255,7 @@ def is_image(path):
     str = os.path.basename(path).lower()
     if str.startswith("."):
         return False 
-    return str.endswith(".png") or str.endswith(".jpg")
+    return str.endswith(".png") or str.endswith(".jpg") or str.endswith(".heic") or str.endswith(".jpeg")
 
 def output_prefix(attach_info, info_on_bottom, info_on_right, d_w, d_h):
     p = ""
@@ -277,7 +286,7 @@ def process_folder(input_dir, output_dir, size, verbose):
 
 def process_img(path, output_dir, size, verbose):
     if not is_image(path):
-        print("ignore {}".format(path))
+        print(red("ignore {}".format(path)))
         return 0
     ratio = pick_ratio(size)
     print("processing {}".format(path))
