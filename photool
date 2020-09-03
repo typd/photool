@@ -35,11 +35,11 @@ def pick_in_list(index, arr):
     return None
 
 def pick_ratio(k):
-    # 5"      : 127mm * 89mm
+    # 5"      : 127mm * 89mm # NOTE, the real size is 88mm
     # 5" extra: 127mm * 95mm
     # 6"      : 152mm * 102mm
     return {
-            "5": 127.0 / 89,
+            "5": 127.0 / 88,
             "5e": 127.0 / 95,
             "6": 152.0 / 102,
             "x": 182.0 / 102
@@ -241,7 +241,8 @@ def transform(path, exp_ratio, verbose):
             txt_w, txt_h = (h, d_w - start_w)
         txt_img = Image.new('RGB', (txt_w, txt_h), (0, 0, 0))
         txt_d = ImageDraw.Draw(txt_img)
-        font_w, font_h = txt_d.textsize(info, font=fnt)
+        # Note, info += " " to avoid cut text on the edge
+        font_w, font_h = txt_d.textsize(info + " ", font=fnt)
         txt_d.text((txt_w - font_w - margin, margin), info, font=fnt, fill=(200, 200, 200))
         if info_on_bottom:
             final.paste(txt_img, (start_w, start_h + h))
